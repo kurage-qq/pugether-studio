@@ -6,7 +6,7 @@ import zipfile
 import re
 import numpy as np
 
-# --- 苹果风格页面设置与 UI 增强 ---
+# --- 1. 苹果风格页面设置与 UI 增强 ---
 st.set_page_config(page_title="Pugether Studio", page_icon="🔧", layout="centered")
 
 # 初始化“记忆”：拼图区和拆图区分开存放
@@ -97,7 +97,7 @@ with tabs[0]:
     with col1:
         direction = st.segmented_control("拼接方向", ["左右", "上下"], default="左右")
     with col2:
-        is_align = st.toggle("无痕拼接", value=false)
+        is_align = st.toggle("无痕拼接", value=False)
 
     if st.session_state.file_list:
         sorted_files = sorted(st.session_state.file_list, key=lambda x: 自然排序(x.name))
@@ -139,13 +139,13 @@ with tabs[0]:
                         progress_bar.progress((i + 2) / (total_pairs * 2))
                 status_text.text("✨ 全部拼图处理完成！")
                 st.balloons()
-                st.download_button("📂 下载结果", data=zip_buffer.getvalue(), file_name="Pugether_Export.zip")
+                st.download_button("📂 下载拼图包", data=zip_buffer.getvalue(), file_name="Pugether_Export.zip")
 
 # --- 2. 拆图区 (同步添加了批量管理功能) ---
 with tabs[1]:
     st.markdown("### 1. 上传拼图")
     # 支持批量上传，并隐藏原生列表
-    uploaded_unzip = st.file_uploader("上传拼好的图片", type=["png"], accept_multiple_files=True, label_visibility="collapsed", key="unzip_uploader")
+    uploaded_unzip = st.file_uploader("上传拼好的 PNG 图片", type=["png"], accept_multiple_files=True, label_visibility="collapsed", key="unzip_uploader")
     
     if uploaded_unzip:
         for f in uploaded_unzip:

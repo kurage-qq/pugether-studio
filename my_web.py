@@ -97,7 +97,7 @@ with tabs[0]:
     with col1:
         direction = st.segmented_control("拼接方向", ["左右", "上下"], default="左右")
     with col2:
-        is_align = st.toggle("无痕拼接", value=True)
+        is_align = st.toggle("无痕拼接", value=false)
 
     if st.session_state.file_list:
         sorted_files = sorted(st.session_state.file_list, key=lambda x: 自然排序(x.name))

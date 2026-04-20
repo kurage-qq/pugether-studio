@@ -4,6 +4,7 @@ import json
 import io
 import zipfile
 import re
+import numpy as np  # 新增：用于快速处理图片像素
 
 # --- 1. 苹果风格页面设置 ---
 st.set_page_config(page_title="Pugether Studio", page_icon="🔧", layout="centered")
@@ -42,7 +43,43 @@ tabs = st.tabs(["🧩批量拼图", "🔩快速拆图"])
 def 自然排序(text):
     return [int(c) if c.isdigit() else c.lower() for c in re.split('([0-9]+)', text)]
 
-# --- 拼图区 (已有的) ---
+# 新增：智能检测分割线的函数
+def find_divider(img):
+    """尝试寻找图片的垂直或水平分割线"""
+    arr = np.array(img.convert("L")) # 转为灰度图处理
+    h, w = arr.shape
+    
+    # 1. 尝试找垂直分割线（左右拼）- 检查中间40%-60%区域
+    mid_w = w // 2
+    search_range_w = range(int(w*0.4), int(w*0.6))
+    best_col = mid_w
+    min_var = float('inf')
+    
+    for j in search_range_w:
+        col_var = np.var(arr[:, j])
+        if col_var < min_var:
+            min_var = col_var
+            best_col = j
+            
+    # 2. 尝试找水平分割线（上下拼）
+    mid_h = h // 2
+    search_range_h = range(int(h*0.4), int(h*0.6))
+    best_row = mid_h
+    min_var_h = float('inf')
+    
+    for i in search_range_h:
+        row_var = np.var(arr[i, :])
+        if row_var < min_var_h:
+            min_var_h = row_var
+            best_row = i
+            
+    # 如果垂直方向的“纯净度”更高，说明是左右拼
+    if min_var < min_var_h:
+        return "左右", best_col
+    else:
+        return "上下", best_row
+
+# --- 拼图区 ---
 with tabs[0]:
     st.markdown("### 上传素材")
     files = st.file_uploader("将图片拖入此处", type=["png", "jpg", "jpeg"], accept_multiple_files=True, label_visibility="collapsed")
@@ -78,13 +115,12 @@ with tabs[0]:
                 st.success("处理完成")
                 st.download_button("下载 Pic.zip", data=zip_buffer.getvalue(), file_name="Pic.zip")
 
-# --- 拆图区 (新增了进度条) ---
+# --- 拆图区 ---
 with tabs[1]:
     st.markdown("### 还原原图")
     c_files = st.file_uploader("上传拼好的图片", type=["png"], accept_multiple_files=True, label_visibility="collapsed", key="unzip")
     
     if c_files and st.button("立即拆分", key="unzip_btn"):
-        # --- 这里增加了进度提示 ---
         progress_bar_u = st.progress(0)
         status_text_u = st.empty()
         
@@ -93,10 +129,12 @@ with tabs[1]:
         
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zip_file:
             for idx, f in enumerate(c_files):
-                # 更新文字，告诉正在拆哪一张
                 status_text_u.text(f"正在拆解第 {idx + 1}/{total_files} 张: {f.name}")
                 
                 img = Image.open(f)
+                res1, res2 = None, None
+                
+                # 优先检查元数据
                 if "recipe" in img.info:
                     recipe = json.loads(img.info["recipe"])
                     if recipe["dir"] == "左右拼":
@@ -105,15 +143,22 @@ with tabs[1]:
                     else:
                         res1 = img.crop((0, 0, recipe["w1"], recipe["h1"]))
                         res2 = img.crop((0, recipe["h1"], recipe["w2"], recipe["h1"] + recipe["h2"]))
-                    
+                else:
+                    # 自动检测拆分逻辑
+                    mode, pos = find_divider(img)
+                    if mode == "左右":
+                        res1 = img.crop((0, 0, pos, img.height))
+                        res2 = img.crop((pos, 0, img.width, img.height))
+                    else:
+                        res1 = img.crop((0, 0, img.width, pos))
+                        res2 = img.crop((0, pos, img.width, img.height))
+                
+                if res1 and res2:
                     b1, b2 = io.BytesIO(), io.BytesIO()
                     res1.save(b1, format="PNG"); res2.save(b2, format="PNG")
                     zip_file.writestr(f"Restored_{f.name}_A.png", b1.getvalue())
                     zip_file.writestr(f"Restored_{f.name}_B.png", b2.getvalue())
-                else:
-                    st.error(f"跳过文件 {f.name}：它好像不是从这个工作室拼出来的哦！")
                 
-                # 推进进度条
                 progress_bar_u.progress((idx + 1) / total_files)
         
         status_text_u.text("✨ 拆分任务全部完成！")

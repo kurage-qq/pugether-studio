@@ -93,7 +93,7 @@ with tabs[1]:
         
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zip_file:
             for idx, f in enumerate(c_files):
-                # 更新文字，告诉奶奶正在拆哪一张
+                # 更新文字，告诉正在拆哪一张
                 status_text_u.text(f"正在拆解第 {idx + 1}/{total_files} 张: {f.name}")
                 
                 img = Image.open(f)

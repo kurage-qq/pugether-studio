@@ -112,4 +112,40 @@ with tabs[0]:
                     canvas.paste(img1,(0,0)); canvas.paste(img2,(img1.width if dir_mode == "左右拼" else 0, 0 if dir_mode == "左右拼" else img1.height))
                     
                     tmp = io.BytesIO(); canvas.save(tmp, format="PNG")
-                    zf.writestr(f
+                    zf.writestr(f"Result_{i//2+1}.png", tmp.getvalue())
+                    p_bar.progress((i + 2) / (total_pairs * 2))
+            st.balloons()
+            st.download_button("📂 下载拼图包", zip_buf.getvalue(), "Export.zip")
+
+# --- 2. 拆图区 (竖向边界裁剪版) ---
+with tabs[1]:
+    u1, u2 = st.columns([0.8, 0.2])
+    u1.markdown("### 1. 上传拼图")
+    if u2.button("🧹 一键清空", key="u_clr"):
+        st.session_state.u_clear_id += 1
+        st.rerun()
+
+    up_u = st.file_uploader("图片", type=["png", "jpg"], accept_multiple_files=True, label_visibility="collapsed", key=f"u_u_{st.session_state.u_clear_id}")
+    
+    if up_u:
+        if st.button("🔍 自动检测白块并拆分", key="u_start_btn"):
+            u_status = st.empty(); u_bar = st.progress(0); zip_buf_u = io.BytesIO()
+            total = len(up_u)
+            with zipfile.ZipFile(zip_buf_u, "a", zipfile.ZIP_DEFLATED) as zf:
+                for idx, f in enumerate(up_u):
+                    u_status.text(f"正在分析边界: {idx+1}/{total}")
+                    img = Image.open(f)
+                    
+                    # 使用“白块竖向边界”算法
+                    res_list = smart_white_block_split(img)
+                    
+                    for sub_idx, res in enumerate(res_list):
+                        b = io.BytesIO()
+                        res.save(b, "PNG")
+                        suffix = "A" if sub_idx == 0 else "B"
+                        zf.writestr(f"{f.name}_{suffix}.png", b.getvalue())
+                    
+                    u_bar.progress((idx + 1) / total)
+            
+            u_status.success(f"✨ 拆分完成！已自动识别白色区域并裁剪。")
+            st.download_button("📂 下载还原包", zip_buf_u.getvalue(), "Restored.zip")

@@ -63,8 +63,8 @@ def find_divider(img):
 # --- 1. 拼图区 ---
 with tabs[0]:
     st.markdown("### 1. 上传素材")
-    # 使用 key="pintu_uploader" 方便 CSS 精确控制
-    uploaded_files = st.file_uploader("拖入图片", type=["png", "jpg", "jpeg"], accept_multiple_files=True, label_visibility="collapsed", key="pintu_uploader")
+    # 批量上传功能
+    uploaded_files = st.file_uploader("点击或拖入多张图片", type=["png", "jpg", "jpeg"], accept_multiple_files=True, label_visibility="collapsed", key="pintu_uploader")
     
     if uploaded_files:
         for f in uploaded_files:
@@ -73,16 +73,33 @@ with tabs[0]:
 
     # 批量管理列表
     if st.session_state.file_list:
-        st.markdown("##### 📝 待处理清单")
-        col_btn1, col_btn2 = st.columns([0.7, 0.3])
-        if col_btn2.button("🗑️ 清空全部"):
+        st.markdown(f"##### 📝 待处理清单 (共 {len(st.session_state.file_list)} 张)")
+        
+        # --- 新增：批量删除操作区 ---
+        col_op1, col_op2, col_op3 = st.columns([0.4, 0.3, 0.3])
+        
+        if col_op2.button("🗑️ 删除选中"):
+            # 找出所有没被勾选的图片，保留下来
+            to_keep = []
+            for idx, file in enumerate(st.session_state.file_list):
+                chk_key = f"chk_{file.name}_{idx}"
+                if not st.session_state.get(chk_key, False):
+                    to_keep.append(file)
+            st.session_state.file_list = to_keep
+            st.rerun()
+
+        if col_op3.button("🧹 一键清空"):
             st.session_state.file_list = []
             st.rerun()
 
+        # 循环显示每一张图
         for idx, file in enumerate(st.session_state.file_list):
-            c = st.columns([0.85, 0.15])
-            c[0].caption(f"📄 {file.name}")
-            if c[1].button("❌", key=f"del_{file.name}_{idx}"):
+            c = st.columns([0.1, 0.75, 0.15])
+            # 新增：复选框，用于批量删除
+            c[0].checkbox("", key=f"chk_{file.name}_{idx}", label_visibility="collapsed")
+            c[1].caption(f"📄 {file.name}")
+            # 保留原有的单张删除叉叉
+            if c[2].button("❌", key=f"del_{file.name}_{idx}"):
                 st.session_state.file_list.pop(idx)
                 st.rerun()
         
@@ -92,7 +109,7 @@ with tabs[0]:
     with col1:
         direction = st.segmented_control("拼接方向", ["左右拼", "上下拼"], default="左右拼")
     with col2:
-        is_align = st.toggle("智能对齐", value=True)
+        is_align = st.toggle("🧪 智能对齐", value=True)
 
     if st.session_state.file_list:
         sorted_files = sorted(st.session_state.file_list, key=lambda x: 自然排序(x.name))
@@ -100,12 +117,18 @@ with tabs[0]:
             if len(sorted_files) < 2:
                 st.warning("请至少上传 2 张图片")
             else:
+                # 进度文字状态栏
+                status_text = st.empty()
                 progress_bar = st.progress(0)
                 zip_buffer = io.BytesIO()
                 total_pairs = len(sorted_files) // 2
                 
                 with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zip_file:
                     for i in range(0, total_pairs * 2, 2):
+                        # 更新具体的进度文字
+                        current_pair = i // 2 + 1
+                        status_text.text(f"正在处理第 {current_pair} / {total_pairs} 组拼图...")
+                        
                         img1 = Image.open(sorted_files[i]).convert("RGBA")
                         img2 = Image.open(sorted_files[i+1]).convert("RGBA")
                         
@@ -132,29 +155,33 @@ with tabs[0]:
                         
                         buf = io.BytesIO()
                         canvas.save(buf, format="PNG", pnginfo=meta)
-                        zip_file.writestr(f"Result_{i//2 + 1}.png", buf.getvalue())
+                        zip_file.writestr(f"Result_{current_pair}.png", buf.getvalue())
                         progress_bar.progress((i + 2) / (total_pairs * 2))
                 
+                status_text.text("✨ 全部拼图处理完成！")
                 st.balloons()
                 st.download_button("📂 下载拼图包", data=zip_buffer.getvalue(), file_name="Pugether_Export.zip")
 
-# --- 2. 拆图区 (逻辑已完全修复) ---
+# --- 2. 拆图区 ---
 with tabs[1]:
     st.markdown("### 1. 上传拼图")
-    # 拆图区不需要复杂的管理列表，保持原生即可
     c_files = st.file_uploader("上传拼好的 PNG 图片", type=["png"], accept_multiple_files=True, label_visibility="collapsed", key="unzip_uploader")
     
     if c_files and st.button("🔍 立即拆分还原", key="unzip_btn"):
+        # 进度文字状态栏
+        status_text_u = st.empty()
         progress_bar_u = st.progress(0)
         zip_buffer = io.BytesIO()
         total = len(c_files)
         
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zip_file:
             for idx, f in enumerate(c_files):
+                # 更新具体的进度文字
+                status_text_u.text(f"正在还原第 {idx + 1} / {total} 张图片: {f.name}")
+                
                 img = Image.open(f)
                 res1, res2 = None, None
                 
-                # 优先按元数据拆
                 if "recipe" in img.info:
                     recipe = json.loads(img.info["recipe"])
                     if recipe["dir"] == "左右拼":
@@ -164,7 +191,6 @@ with tabs[1]:
                         res1 = img.crop((0, 0, recipe["w1"], recipe["h1"]))
                         res2 = img.crop((0, recipe["h1"], recipe["w2"], recipe["h1"] + recipe["h2"]))
                 else:
-                    # 自动检测拆分
                     mode, pos = find_divider(img)
                     if mode == "左右":
                         res1 = img.crop((0, 0, pos, img.height))
@@ -181,5 +207,6 @@ with tabs[1]:
                 
                 progress_bar_u.progress((idx + 1) / total)
         
-        st.success("✨ 拆分任务已完成！")
+        status_text_u.text(f"✨ 成功还原 {total} 张图片！")
+        st.success("拆分任务已完成！")
         st.download_button("📂 下载还原包", data=zip_buffer.getvalue(), file_name="Pugether_Restored.zip")
